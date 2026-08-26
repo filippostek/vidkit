@@ -1,0 +1,274 @@
+{
+  "name": "Nexalead Auto-Scheduler (weekly)",
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "\u23f0 Sunday 18:00 CT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read_hist",
+      "name": "\ud83d\udccb Read Last 30 Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "MasterCalendar"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "read_perf",
+      "name": "\ud83d\udcc8 Read Performance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        620
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "Performance"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "digest",
+      "name": "\ud83e\uddee Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Compress history + performance into a compact brief for the model.\nconst hist = $('\ud83d\udccb Read Last 30 Rows').all().map(i=>i.json);\nlet perf = [];\ntry { perf = $('\ud83d\udcc8 Read Performance').all().map(i=>i.json); } catch(e) {}\n\nconst recent = hist.slice(-30)\n  .map(r => (r.content_brief||'').slice(0,110))\n  .filter(Boolean);\n\n// rank hooks by engagement if we have any data yet\nconst ranked = perf\n  .filter(r => r.hook && Number(r.engagement||0) > 0)\n  .sort((a,b)=>Number(b.engagement)-Number(a.engagement))\n  .slice(0,8)\n  .map(r=>`${r.hook} (${r.engagement})`);\n\n// next Monday, in CT\nconst now = new Date();\nconst d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));\nd.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7));\nconst monday = d.toISOString().slice(0,10);\n\nreturn [{ json: {\n  recent_topics: recent.join(' | ') || 'none yet',\n  top_hooks: ranked.join(' | ') || 'no performance data yet',\n  week_start: monday,\n  posted_count: hist.filter(r=>r.status==='posted').length,\n}}];"
+      }
+    },
+    {
+      "id": "plan",
+      "name": "\ud83e\udde0 Plan The Week",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        400
+      ],
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You are the content engine for Nexalead (nexalead.ai). OFFER: Fractional Chief AI Officer for $10M-$200M revenue companies that need AI leadership without hiring a full-time executive. We bring a backend team, AI workflow design, systems consulting, and \\u2014 critically \\u2014 execution, not just strategy. CONCRETE PROMISES: board-ready AI roadmap in 14 days. Three production AI systems live in 45 days. The client owns everything we build \\u2014 code, systems, documentation. No vendor lock-in, no rented seats. PROOF: currently working with Forbes-list retailers, mid-market manufacturers, distributors and brokers across the US and LATAM. ECONOMICS: we are both a money-maker and a money-saver \\u2014 new revenue from AI systems, plus cost removed from manual operations. AUDIENCE: CEO, COO, CFO or board member at a $10M-$200M company. Non-technical. Under pressure to 'do something about AI'. Has been pitched by consultancies that deliver slide decks and disappear. VOICE: direct, concrete numbers, zero jargon, zero hype, slightly contrarian. Never say 'leverage', 'unlock', 'transform', 'journey', 'landscape', 'game-changer', or 'in today's fast-paced world'. Write like an operator talking to another operator. Respond with ONLY a JSON object.\" },\n    { \"role\": \"user\", \"content\": \"Plan next week of content. Week starts Monday {{ $json.week_start }}.\\\\n\\\\nAlready covered recently, do NOT repeat these angles:\\\\n{{ $json.recent_topics }}\\\\n\\\\nHooks that performed best so far (write in this register):\\\\n{{ $json.top_hooks }}\\\\n\\\\nFixed weekly rhythm:\\\\nMON proof \u2014 real numbers from our own automations\\\\nTUE tactical \u2014 one automation idea with hours-saved math\\\\nWED contrarian \u2014 against AI hype and consultant theatre\\\\nTHU case study \u2014 before/after with numbers\\\\nFRI service \u2014 inside the audit or engine process\\\\nSAT weekend read \u2014 anti-hype guide content\\\\nSUN roi \u2014 payback math, simple arithmetic\\\\n\\\\nReturn JSON with key \\\\\\\"days\\\\\\\": an array of exactly 7 objects, each:\\\\n- day: MON..SUN\\\\n- date: YYYY-MM-DD, Monday is {{ $json.week_start }}\\\\n- campaign_type: proof|tactical|contrarian|case_study|service|education|roi\\\\n- content_brief: 1-2 sentences telling the copywriter exactly what to write. Must contain at least one concrete number. Must be a genuinely different angle from every recent topic listed above.\\\\n- hook: max 42 chars, the line that would open a video on this topic. Number-first or blunt claim. No greeting.\\\\n- long_form: true only on MON and WED (those days also get blog articles)\" }\n  ]\n}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CRED_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "id": "expand",
+      "name": "\ud83d\udd00 Expand To Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "let plan={days:[]};\ntry{ plan=JSON.parse($input.first().json.choices[0].message.content);}catch(e){}\nconst ctx=$('\ud83e\uddee Build Context').first().json;\n\nconst SOCIAL=\"bluesky,mastodon,truthsocial,telegram,tumblr\";\nconst BLOGS=\"blogger,devto,hashnode\";\n\nconst rows=[];\nfor(const d of (plan.days||[])){\n  const date=d.date||ctx.week_start;\n  // morning social slot, every day\n  rows.push({\n    row_id:`${d.day}-${date}-S`,\n    scheduled_datetime:`${date}T08:00:00`,\n    platforms:SOCIAL,\n    content_mode:\"ai_generate\",\n    campaign_type:d.campaign_type||\"education\",\n    content_brief:d.content_brief||\"\",\n    hook:d.hook||\"\",\n    link_url:\"https://nexalead.ai\",\n    status:\"scheduled\"\n  });\n  // midday long-form on the two blog days\n  if(d.long_form){\n    rows.push({\n      row_id:`${d.day}-${date}-B`,\n      scheduled_datetime:`${date}T12:00:00`,\n      platforms:BLOGS,\n      content_mode:\"ai_generate\",\n      campaign_type:d.campaign_type||\"education\",\n      content_brief:(d.content_brief||\"\")+\" Long-form treatment. Each blog must take a DIFFERENT angle on this same topic.\",\n      hook:d.hook||\"\",\n      link_url:\"https://nexalead.ai\",\n      status:\"scheduled\"\n    });\n  }\n  // Thursday newsletter\n  if(d.day===\"THU\"){\n    rows.push({\n      row_id:`THU-${date}-N`,\n      scheduled_datetime:`${date}T16:00:00`,\n      platforms:\"substack\",\n      content_mode:\"ai_generate\",\n      campaign_type:\"education\",\n      content_brief:(d.content_brief||\"\")+\" Newsletter format, one deployable tactic.\",\n      hook:d.hook||\"\",\n      link_url:\"https://nexalead.ai\",\n      status:\"scheduled\"\n    });\n  }\n}\nif(!rows.length){\n  rows.push({row_id:\"FALLBACK-\"+ctx.week_start,\n    scheduled_datetime:`${ctx.week_start}T08:00:00`,\n    platforms:SOCIAL,content_mode:\"ai_generate\",campaign_type:\"proof\",\n    content_brief:\"Planner returned nothing. Write about the $30/month automation stack that replaced a $5,000/month agency, with the exact cost breakdown.\",\n    hook:\"$2.14 ran this all week.\",link_url:\"https://nexalead.ai\",status:\"scheduled\"});\n}\nreturn rows.map(r=>({json:r}));"
+      }
+    },
+    {
+      "id": "append",
+      "name": "\u2705 Append To Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1180,
+        400
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "MasterCalendar"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "notify",
+      "name": "\ud83d\udce3 Telegram Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        400
+      ],
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_ADMIN_CHAT || $env.TELEGRAM_CHANNEL_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=<b>Week scheduled</b>\\n{{ $items().length }} rows queued starting {{ $('\ud83e\uddee Build Context').first().json.week_start }}.\\nNothing to do \u2014 it posts itself."
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "\u23f0 Sunday 18:00 CT": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udccb Read Last 30 Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "\ud83d\udcc8 Read Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Read Last 30 Rows": {
+      "main": [
+        [
+          {
+            "node": "\ud83e\uddee Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\uddee Build Context": {
+      "main": [
+        [
+          {
+            "node": "\ud83e\udde0 Plan The Week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\udde0 Plan The Week": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd00 Expand To Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd00 Expand To Rows": {
+      "main": [
+        [
+          {
+            "node": "\u2705 Append To Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2705 Append To Calendar": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce3 Telegram Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  }
+}

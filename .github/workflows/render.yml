@@ -1,0 +1,176 @@
+name: vidkit render
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url: { description: 'Raw video URL', required: true }
+      brand:      { description: 'nexalead | armonia', required: true, default: 'nexalead' }
+      hook:       { description: 'Opening card text', required: false }
+      script:     { description: 'Narration script', required: false }
+      stats:      { description: 'Closing card, pipe separated', required: false }
+      out_name:   { description: 'Output filename', required: false, default: 'short.mp4' }
+      tts:        { description: 'Generate voiceover', required: false, default: 'true' }
+      fit:        { description: 'screencast | fill | native', required: false, default: 'screencast' }
+      move:       { description: 'camera move', required: false, default: 'dolly_in' }
+      grade:      { description: 'colour grade', required: false, default: 'clean' }
+      style:      { description: 'visual style preset', required: false, default: 'none' }
+  repository_dispatch:
+    types: [render_video]
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve inputs
+        id: cfg
+        env:
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          IN_SOURCE: ${{ inputs.source_url }}
+          IN_BRAND: ${{ inputs.brand }}
+          IN_HOOK: ${{ inputs.hook }}
+          IN_SCRIPT: ${{ inputs.script }}
+          IN_STATS: ${{ inputs.stats }}
+          IN_OUT: ${{ inputs.out_name }}
+          IN_TTS: ${{ inputs.tts }}
+          IN_FIT: ${{ inputs.fit }}
+          IN_MOVE: ${{ inputs.move }}
+          IN_GRADE: ${{ inputs.grade }}
+          IN_STYLE: ${{ inputs.style }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "repository_dispatch" ]; then
+            P="$PAYLOAD"
+          else
+            P=$(jq -n \
+              --arg source_url "$IN_SOURCE" --arg brand "$IN_BRAND" \
+              --arg hook "$IN_HOOK" --arg script "$IN_SCRIPT" \
+              --arg stats "$IN_STATS" --arg out_name "$IN_OUT" \
+              --arg tts "$IN_TTS" --arg fit "$IN_FIT" \
+              --arg move "$IN_MOVE" --arg grade "$IN_GRADE" \
+              --arg style "$IN_STYLE" '$ARGS.named')
+          fi
+          emit () {
+            local d
+            d="EOF_$(openssl rand -hex 8)"
+            printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_OUTPUT"
+          }
+          emit source_url "$(jq -r '.source_url // ""'         <<< "$P")"
+          emit brand      "$(jq -r '.brand      // "nexalead"'  <<< "$P")"
+          emit hook       "$(jq -r '.hook       // ""'          <<< "$P")"
+          emit script     "$(jq -r '.script     // ""'          <<< "$P")"
+          emit stats      "$(jq -r '.stats      // ""'          <<< "$P")"
+          emit out_name   "$(jq -r '.out_name   // "short.mp4"' <<< "$P")"
+          emit tts        "$(jq -r '.tts        // "true"'      <<< "$P")"
+          emit row_id     "$(jq -r '.row_id     // ""'          <<< "$P")"
+          emit callback   "$(jq -r '.callback   // ""'          <<< "$P")"
+          emit fit        "$(jq -r '.fit        // "screencast"'<<< "$P")"
+          emit focus      "$(jq -r '.focus      // "0.5,0.5"'   <<< "$P")"
+          emit move       "$(jq -r '.move       // "dolly_in"'  <<< "$P")"
+          emit grade      "$(jq -r '.grade      // "clean"'     <<< "$P")"
+          emit style      "$(jq -r '.style      // "none"'      <<< "$P")"
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fontconfig libass9
+          mkdir -p ~/.fonts
+          for w in Regular Medium SemiBold Bold; do
+            curl -fsSL -o ~/.fonts/Poppins-$w.ttf \
+              "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf" || true
+          done
+          fc-cache -f
+          pip install --quiet auto-editor faster-whisper
+          if [ "${{ steps.cfg.outputs.tts }}" = "true" ]; then
+            pip install --quiet kokoro soundfile || echo "kokoro unavailable"
+          fi
+
+      - name: Get or generate source
+        env:
+          SRC: ${{ steps.cfg.outputs.source_url }}
+          BRAND: ${{ steps.cfg.outputs.brand }}
+        run: |
+          set -euo pipefail
+          if [[ "$SRC" == datavid:* ]]; then
+            # No footage needed. Format: datavid:TEMPLATE:TITLE:item|item|item
+            pip install --quiet pillow
+            BODY="${SRC#datavid:}"
+            TPL="${BODY%%:*}";  REST="${BODY#*:}"
+            TITLE="${REST%%:*}"; DATA="${REST#*:}"
+            echo "generating $TPL from data (no footage)"
+            python3 bin/datavid.py --template "$TPL" --data "$DATA" \
+              --title "$TITLE" --brand "$BRAND" --seconds 7 --out raw_input
+          else
+            curl -fsSL -o raw_input "$SRC"
+          fi
+
+      - name: Render
+        env:
+          HOOK: ${{ steps.cfg.outputs.hook }}
+          SCRIPT: ${{ steps.cfg.outputs.script }}
+          STATS: ${{ steps.cfg.outputs.stats }}
+          TTS: ${{ steps.cfg.outputs.tts }}
+        run: |
+          set -euo pipefail
+          FIT="${{ steps.cfg.outputs.fit }}"
+          # datavid renders native 9:16 — punching in would crop the design
+          if [[ "${{ steps.cfg.outputs.source_url }}" == datavid:* ]]; then
+            FIT="native"
+          fi
+          ARGS=(--input raw_input
+                --out "${{ steps.cfg.outputs.out_name }}"
+                --brand "${{ steps.cfg.outputs.brand }}"
+                --fit "$FIT"
+                --focus "${{ steps.cfg.outputs.focus }}"
+                --move "${{ steps.cfg.outputs.move }}"
+                --grade "${{ steps.cfg.outputs.grade }}"
+                --style "${{ steps.cfg.outputs.style }}"
+                --bloom 0.25 --autoedit --preset veryfast --crf 23)
+          if [ -n "$HOOK" ];   then ARGS+=(--hook   "$HOOK");   fi
+          if [ -n "$SCRIPT" ]; then ARGS+=(--script "$SCRIPT"); fi
+          if [ -n "$STATS" ];  then ARGS+=(--stats  "$STATS");  fi
+          if [ "$TTS" != "true" ]; then ARGS+=(--no-tts); fi
+          python3 bin/render.py "${ARGS[@]}"
+
+      - name: Upload to Cloudflare R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+        run: |
+          if [ -z "${R2_ACCESS_KEY_ID:-}" ]; then
+            echo "R2 secrets not set, skipping upload"; exit 0
+          fi
+          pip install --quiet boto3
+          BASE="${{ steps.cfg.outputs.out_name }}"
+          python3 bin/upload_r2.py --file "$BASE" --also "${BASE%.mp4}.jpg"
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video
+          path: |
+            ${{ steps.cfg.outputs.out_name }}
+            *.jpg
+            *.json
+          retention-days: 14
+
+      - name: Notify n8n
+        env:
+          CB: ${{ steps.cfg.outputs.callback }}
+          ROW: ${{ steps.cfg.outputs.row_id }}
+          PUB: ${{ secrets.R2_PUBLIC_BASE }}
+        run: |
+          if [ -z "${CB:-}" ]; then echo "no callback"; exit 0; fi
+          BASE="${{ steps.cfg.outputs.out_name }}"
+          PREFIX="videos/$(date -u +%Y-%m)"
+          jq -n --arg row_id "$ROW" \
+                --arg video_url "$PUB/$PREFIX/$BASE" \
+                --arg thumbnail_url "$PUB/$PREFIX/${BASE%.mp4}.jpg" \
+                '{row_id:$row_id,status:"rendered",video_url:$video_url,thumbnail_url:$thumbnail_url}' \
+            | curl -fsS -X POST "$CB" -H 'Content-Type: application/json' -d @- || true

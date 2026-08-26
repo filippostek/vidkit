@@ -1,0 +1,1171 @@
+{
+  "name": "Nexalead Video Autopilot v1 — 10 Platforms",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "⏰ 9AM 5PM CT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        600
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9,17 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read_sheet",
+      "name": "📋 Read VideoCalendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        600
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "VideoCalendar"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "scheduled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "filter_due",
+      "name": "🕐 Filter Due",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        440,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.scheduled_datetime }}",
+              "rightValue": "={{ $now.toISO() }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "beforeOrEqual"
+              }
+            },
+            {
+              "leftValue": "={{ $json.video_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "chatgpt",
+      "name": "🧠 ChatGPT Captions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        600
+      ],
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You are the content engine for Nexalead (nexalead.ai). OFFER: Fractional Chief AI Officer for $10M-$200M revenue companies that need AI leadership without hiring a full-time executive. We bring a backend team, AI workflow design, systems consulting, and \\u2014 critically \\u2014 execution, not just strategy. CONCRETE PROMISES: board-ready AI roadmap in 14 days. Three production AI systems live in 45 days. The client owns everything we build \\u2014 code, systems, documentation. No vendor lock-in, no rented seats. PROOF: currently working with Forbes-list retailers, mid-market manufacturers, distributors and brokers across the US and LATAM. ECONOMICS: we are both a money-maker and a money-saver \\u2014 new revenue from AI systems, plus cost removed from manual operations. AUDIENCE: CEO, COO, CFO or board member at a $10M-$200M company. Non-technical. Under pressure to 'do something about AI'. Has been pitched by consultancies that deliver slide decks and disappear. VOICE: direct, concrete numbers, zero jargon, zero hype, slightly contrarian. Never say 'leverage', 'unlock', 'transform', 'journey', 'landscape', 'game-changer', or 'in today's fast-paced world'. Write like an operator talking to another operator. Respond with ONLY a JSON object.\" },\n    { \"role\": \"user\", \"content\": \"Video topic: {{ $json.video_brief }}\\\\nPlatforms: {{ $json.platforms }}\\\\n\\\\nReturn JSON with these keys:\\\\n- title_youtube: max 90 chars, hook-first, no clickbait lies\\\\n- desc_youtube: 3-5 lines, include https://nexalead.ai, then 3-5 hashtags\\\\n- caption_tiktok: max 2200 chars but keep under 150 words, hook in first line, 3-5 hashtags, NO link\\\\n- caption_reels: similar to tiktok, slightly more polished, 3-5 hashtags, NO link\\\\n- caption_facebook: 2-3 sentences plus https://nexalead.ai\\\\n- caption_telegram: 2-3 sentences with HTML <b> tags allowed, include https://nexalead.ai\\\\n- caption_mastodon: max 480 chars, include https://nexalead.ai\\\\n- caption_truthsocial: max 480 chars, business angle, include https://nexalead.ai\\\\n- caption_bluesky: max 280 chars, include https://nexalead.ai\\\\n- caption_tumblr: 2-4 sentences, include https://nexalead.ai\\\\n- title_pinterest: max 100 chars SEO\\\\n- desc_pinterest: max 500 chars with keywords\\\\n- yt_tags: comma separated, 6-10 tags\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CRED_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "id": "merge",
+      "name": "🔗 Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let ai = {};\ntry { ai = JSON.parse($input.item.json.choices[0].message.content); }\ncatch(e) { ai = { _ai_error: e.message }; }\nconst row = $('🕐 Filter Due').first().json;\nconst platforms = (row.platforms || '').split(',').map(s => s.trim().toLowerCase());\nreturn { json: { ...row, ...ai, _platforms: platforms } };"
+      }
+    },
+    {
+      "id": "download",
+      "name": "⬇️ Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        1500
+      ],
+      "parameters": {
+        "url": "={{ $json.video_url }}",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "if_tiktok",
+      "name": "→ TikTok?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('tiktok') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "if_reels",
+      "name": "→ IG Reels?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('reels') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "if_fbreels",
+      "name": "→ FB Reels?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('fbreels') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "if_telegram",
+      "name": "→ Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('telegram') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_telegram",
+      "name": "📤 Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        160
+      ],
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendVideo",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHANNEL_ID }}"
+            },
+            {
+              "name": "video",
+              "value": "={{ $json.video_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption_telegram }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "if_tumblr",
+      "name": "→ Tumblr?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('tumblr') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_tumblr",
+      "name": "📤 Tumblr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        280
+      ],
+      "parameters": {
+        "url": "=https://api.tumblr.com/v2/blog/{{ $env.TUMBLR_BLOG_NAME }}/post",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "video"
+            },
+            {
+              "name": "embed",
+              "value": "=<video src=\"{{ $json.video_url }}\" controls></video>"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption_tumblr }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "TUMBLR_CRED_ID",
+          "name": "Tumblr OAuth2"
+        }
+      }
+    },
+    {
+      "id": "if_youtube",
+      "name": "→ YouTube?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('youtube') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_youtube",
+      "name": "📤 YouTube Shorts",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        1300
+      ],
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('🔗 Merge').first().json.title_youtube }}",
+        "regionCode": "US",
+        "categoryId": "28",
+        "options": {
+          "description": "={{ $('🔗 Merge').first().json.desc_youtube }}",
+          "privacyStatus": "public",
+          "tags": "={{ $('🔗 Merge').first().json.yt_tags }}"
+        },
+        "binaryProperty": "data"
+      },
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "YOUTUBE_CRED_ID",
+          "name": "YouTube OAuth2"
+        }
+      }
+    },
+    {
+      "id": "if_mastodon",
+      "name": "→ Mastodon?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1430
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('mastodon') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "masto_media",
+      "name": "📤 Mastodon Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        1430
+      ],
+      "parameters": {
+        "url": "=https://{{ $env.MASTODON_INSTANCE || 'mastodon.social' }}/api/v2/media",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MASTODON_CRED_ID",
+          "name": "Mastodon Bearer"
+        }
+      }
+    },
+    {
+      "id": "masto_status",
+      "name": "📤 Mastodon Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        1430
+      ],
+      "parameters": {
+        "url": "=https://{{ $env.MASTODON_INSTANCE || 'mastodon.social' }}/api/v1/statuses",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $('🔗 Merge').first().json.caption_mastodon }}"
+            },
+            {
+              "name": "media_ids[]",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "visibility",
+              "value": "public"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MASTODON_CRED_ID",
+          "name": "Mastodon Bearer"
+        }
+      }
+    },
+    {
+      "id": "if_truth",
+      "name": "→ Truth Social?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('truthsocial') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "truth_media",
+      "name": "📤 Truth Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        1560
+      ],
+      "parameters": {
+        "url": "https://truthsocial.com/api/v2/media",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TRUTH_CRED_ID",
+          "name": "Truth Social Bearer"
+        }
+      }
+    },
+    {
+      "id": "truth_status",
+      "name": "📤 Truth Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        1560
+      ],
+      "parameters": {
+        "url": "https://truthsocial.com/api/v1/statuses",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $('🔗 Merge').first().json.caption_truthsocial }}"
+            },
+            {
+              "name": "media_ids[]",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "visibility",
+              "value": "public"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TRUTH_CRED_ID",
+          "name": "Truth Social Bearer"
+        }
+      }
+    },
+    {
+      "id": "if_bluesky",
+      "name": "→ Bluesky?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1690
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('bluesky') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bsky_blob",
+      "name": "📤 Bluesky Blob",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        1690
+      ],
+      "parameters": {
+        "url": "https://bsky.social/xrpc/com.atproto.repo.uploadBlob",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BLUESKY_CRED_ID",
+          "name": "Bluesky Bearer"
+        }
+      }
+    },
+    {
+      "id": "bsky_post",
+      "name": "📤 Bluesky Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        1690
+      ],
+      "parameters": {
+        "url": "https://bsky.social/xrpc/com.atproto.repo.createRecord",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"repo\": \"{{ $env.BLUESKY_DID }}\",\n  \"collection\": \"app.bsky.feed.post\",\n  \"record\": {\n    \"$type\": \"app.bsky.feed.post\",\n    \"text\": \"{{ $('🔗 Merge').first().json.caption_bluesky }}\",\n    \"createdAt\": \"{{ $now.toISO() }}\",\n    \"embed\": { \"$type\": \"app.bsky.embed.video\", \"video\": {{ JSON.stringify($json.blob) }} }\n  }\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BLUESKY_CRED_ID",
+          "name": "Bluesky Bearer"
+        }
+      }
+    },
+    {
+      "id": "mark",
+      "name": "✅ Mark Posted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1420,
+        900
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "VideoCalendar"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_id": "={{ $json.row_id }}",
+            "status": "posted",
+            "posted_at": "={{ $now.toISO() }}",
+            "results_log": "=Posted to {{ $json.platforms }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "post_tiktok",
+      "name": "📤 TikTok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        -200
+      ],
+      "parameters": {
+        "url": "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"post_info\": { \"title\": \"{{ $json.caption_tiktok }}\", \"privacy_level\": \"PUBLIC_TO_EVERYONE\",\n    \"disable_duet\": false, \"disable_comment\": false, \"disable_stitch\": false },\n  \"source_info\": { \"source\": \"PULL_FROM_URL\", \"video_url\": \"{{ $json.video_url }}\" }\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TIKTOK_CRED_ID",
+          "name": "TikTok Bearer"
+        }
+      }
+    },
+    {
+      "id": "reels_create",
+      "name": "📤 IG Reels Create",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        -80
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $env.IG_BUSINESS_ACCOUNT_ID }}/media",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "REELS"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ $json.video_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption_reels }}"
+            },
+            {
+              "name": "share_to_feed",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "META_CRED_ID",
+          "name": "Meta Bearer"
+        }
+      }
+    },
+    {
+      "id": "reels_wait",
+      "name": "⏳ Wait 60s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1640,
+        -80
+      ],
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "webhookId": "reels-wait"
+    },
+    {
+      "id": "reels_publish",
+      "name": "📤 IG Reels Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        -80
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $env.IG_BUSINESS_ACCOUNT_ID }}/media_publish",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "META_CRED_ID",
+          "name": "Meta Bearer"
+        }
+      }
+    },
+    {
+      "id": "post_fbreels",
+      "name": "📤 Facebook Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        40
+      ],
+      "parameters": {
+        "url": "=https://graph-video.facebook.com/v21.0/{{ $env.FB_PAGE_ID }}/videos",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file_url",
+              "value": "={{ $json.video_url }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.caption_facebook }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "META_CRED_ID",
+          "name": "Meta Bearer"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "⏰ 9AM 5PM CT": {
+      "main": [
+        [
+          {
+            "node": "📋 Read VideoCalendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Read VideoCalendar": {
+      "main": [
+        [
+          {
+            "node": "🕐 Filter Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕐 Filter Due": {
+      "main": [
+        [
+          {
+            "node": "🧠 ChatGPT Captions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 ChatGPT Captions": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Merge": {
+      "main": [
+        [
+          {
+            "node": "→ TikTok?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ IG Reels?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ FB Reels?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Telegram?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Tumblr?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⬇️ Download Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "✅ Mark Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⬇️ Download Video": {
+      "main": [
+        [
+          {
+            "node": "→ YouTube?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Mastodon?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Truth Social?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Bluesky?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ TikTok?": {
+      "main": [
+        [
+          {
+            "node": "📤 TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ IG Reels?": {
+      "main": [
+        [
+          {
+            "node": "📤 IG Reels Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ FB Reels?": {
+      "main": [
+        [
+          {
+            "node": "📤 Facebook Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Telegram?": {
+      "main": [
+        [
+          {
+            "node": "📤 Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Tumblr?": {
+      "main": [
+        [
+          {
+            "node": "📤 Tumblr",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ YouTube?": {
+      "main": [
+        [
+          {
+            "node": "📤 YouTube Shorts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Mastodon?": {
+      "main": [
+        [
+          {
+            "node": "📤 Mastodon Media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "📤 Mastodon Media": {
+      "main": [
+        [
+          {
+            "node": "📤 Mastodon Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ Truth Social?": {
+      "main": [
+        [
+          {
+            "node": "📤 Truth Media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "📤 Truth Media": {
+      "main": [
+        [
+          {
+            "node": "📤 Truth Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ Bluesky?": {
+      "main": [
+        [
+          {
+            "node": "📤 Bluesky Blob",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "📤 Bluesky Blob": {
+      "main": [
+        [
+          {
+            "node": "📤 Bluesky Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 IG Reels Create": {
+      "main": [
+        [
+          {
+            "node": "⏳ Wait 60s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏳ Wait 60s": {
+      "main": [
+        [
+          {
+            "node": "📤 IG Reels Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  }
+}

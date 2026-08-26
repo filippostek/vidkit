@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+tests/out/
+*.mp4
+*.jpg
+!brand/*.jpg

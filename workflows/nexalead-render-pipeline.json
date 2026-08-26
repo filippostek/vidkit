@@ -1,0 +1,347 @@
+{
+  "name": "Nexalead Video Render Pipeline",
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "\u23f0 Render Queue (hourly)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read",
+      "name": "\ud83d\udccb Read VideoCalendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "VideoCalendar"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "needs_render"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "guard",
+      "name": "\ud83d\udd50 Has Source Or Data?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.raw_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.video_brief }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "script",
+      "name": "\ud83e\udde0 Write Hook + Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"model\": \"gpt-4o\", \"response_format\": {\"type\": \"json_object\"}, \"messages\": [{\"role\": \"system\", \"content\": \"You are the content engine for Nexalead (nexalead.ai). OFFER: Fractional Chief AI Officer for $10M-$200M revenue companies that need AI leadership without hiring a full-time executive. We bring a backend team, AI workflow design, systems consulting, and \\u2014 critically \\u2014 execution, not just strategy. CONCRETE PROMISES: board-ready AI roadmap in 14 days. Three production AI systems live in 45 days. The client owns everything we build \\u2014 code, systems, documentation. No vendor lock-in, no rented seats. PROOF: currently working with Forbes-list retailers, mid-market manufacturers, distributors and brokers across the US and LATAM. ECONOMICS: we are both a money-maker and a money-saver \\u2014 new revenue from AI systems, plus cost removed from manual operations. AUDIENCE: CEO, COO, CFO or board member at a $10M-$200M company. Non-technical. Under pressure to 'do something about AI'. Has been pitched by consultancies that deliver slide decks and disappear. VOICE: direct, concrete numbers, zero jargon, zero hype, slightly contrarian. Never say 'leverage', 'unlock', 'transform', 'journey', 'landscape', 'game-changer', or 'in today's fast-paced world'. Write like an operator talking to another operator. Respond with ONLY a JSON object.\"}, {\"role\": \"user\", \"content\": \"Video brief: {{ $json.video_brief }}\\\\nRaw footage available: {{ $json.raw_url ? 'YES' : 'NO' }}\\\\nTarget length: {{ $json.target_seconds || 45 }} seconds.\\\\n\\\\nReturn JSON:\\\\n- hook: max 42 chars. First thing on screen. Number-first or blunt claim. No greeting, no 'in this video'.\\\\n- script: narration, about 2.4 words per second for the target length. Short spoken sentences, no filler. End on a concrete outcome, not a CTA.\\\\n- stats: exactly 3 short items separated by pipes, e.g. '47 posts|12 platforms|$2.14'. Empty string if the brief has no numbers.\\\\n- out_name: url-safe filename ending in .mp4\\\\n- move: one of crash_zoom, dolly_in, handheld, snap_zoom_out, tilt_reveal. Pick what suits the content.\\\\n- style: one of none, blueprint, film_16mm, vintage, cold_vision. Use none unless there is a reason.\\\\n\\\\nIF no raw footage is available, ALSO return these so we can generate the visual from data alone:\\\\n- datavid_template: one of stats, versus, canvas, list, quote\\\\n    stats  = big figures counting up (use when the brief has 2-3 numbers)\\\\n    versus = before/after comparison bars (use for cost or time comparisons)\\\\n    canvas = an automation graph executing (use when describing a workflow)\\\\n    list   = numbered points revealing (use for '3 things' style briefs)\\\\n    quote  = one blunt claim held on screen (use for contrarian takes)\\\\n- datavid_title: 2-4 words, shown small above the visual, lowercase is fine\\\\n- datavid_data: pipe separated items for the chosen template. For stats use 'NUMBER label' pairs like '47 posts|12 platforms|$2.14 cost'. For versus give exactly 2 items each containing a number. For canvas give 5-7 short step names. For list give 3-5 short items. For quote give one sentence.\"}]}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CRED_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "id": "merge",
+      "name": "\ud83d\udd17 Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let ai = {};\ntry { ai = JSON.parse($input.item.json.choices[0].message.content); }\ncatch (e) { ai = { hook: \"\", script: \"\", stats: \"\", out_name: \"short.mp4\" }; }\nconst row = $('\ud83d\udd50 Has Raw Source?').first().json;\nconst slug = (ai.out_name || 'short.mp4').replace(/[^a-zA-Z0-9._-]/g, '-');\n// sheet columns win over AI defaults for anything the operator set explicitly\nreturn { json: { ...row, ...ai, out_name: slug,\n  fit:   row.fit   || 'screencast',\n  focus: row.focus || '0.5,0.5',\n  move:  row.move  || 'dolly_in',\n  grade: row.grade || 'clean',\n  style: row.style || 'none',\n  tts:   row.tts   || 'true' } };"
+      }
+    },
+    {
+      "id": "dispatch",
+      "name": "\ud83d\ude80 Trigger GitHub Render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $env.GITHUB_USERNAME }}/vidkit/dispatches",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event_type\": \"render_video\",\n  \"client_payload\": {\n    \"source_url\": \"{{ $json.raw_url }}\",\n    \"brand\": \"{{ $json.brand || 'nexalead' }}\",\n    \"hook\": {{ JSON.stringify($json.hook || '') }},\n    \"script\": {{ JSON.stringify($json.script || '') }},\n    \"stats\": {{ JSON.stringify($json.stats || '') }},\n    \"out_name\": \"{{ $json.out_name }}\",\n    \"tts\": \"{{ $json.tts || 'true' }}\",\n    \"fit\": \"{{ $json.fit || 'screencast' }}\",\n    \"focus\": \"{{ $json.focus || '0.5,0.5' }}\",\n    \"move\": \"{{ $json.move || 'dolly_in' }}\",\n    \"grade\": \"{{ $json.grade || 'clean' }}\",\n    \"style\": \"{{ $json.style || 'none' }}\",\n    \"row_id\": \"{{ $json.row_id }}\",\n    \"callback\": \"{{ $env.N8N_RENDER_CALLBACK }}\"\n  }\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GITHUB_CRED_ID",
+          "name": "GitHub Bearer"
+        }
+      }
+    },
+    {
+      "id": "mark_rendering",
+      "name": "\u2705 Mark Rendering",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "VideoCalendar"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_id": "={{ $json.row_id }}",
+            "status": "rendering",
+            "video_brief": "={{ $json.video_brief }}",
+            "results_log": "=render dispatched {{ $now.toISO() }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "hook_in",
+      "name": "\ud83d\udce5 Render Complete Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        700
+      ],
+      "webhookId": "vidkit-render-complete",
+      "parameters": {
+        "path": "vidkit-render-complete",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "mark_ready",
+      "name": "\u2705 Mark Scheduled",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        700
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "VideoCalendar"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_id": "={{ $json.body.row_id }}",
+            "video_url": "={{ $json.body.video_url }}",
+            "thumbnail_url": "={{ $json.body.thumbnail_url }}",
+            "status": "scheduled",
+            "results_log": "=rendered {{ $now.toISO() }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "\u23f0 Render Queue (hourly)": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udccb Read VideoCalendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Read VideoCalendar": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd50 Has Source Or Data?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\udde0 Write Hook + Script": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd17 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd17 Merge": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\ude80 Trigger GitHub Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\ude80 Trigger GitHub Render": {
+      "main": [
+        [
+          {
+            "node": "\u2705 Mark Rendering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce5 Render Complete Webhook": {
+      "main": [
+        [
+          {
+            "node": "\u2705 Mark Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd50 Has Source Or Data?": {
+      "main": [
+        [
+          {
+            "node": "\ud83e\udde0 Write Hook + Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  }
+}
