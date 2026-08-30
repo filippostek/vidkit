@@ -13,7 +13,6 @@ on:
       fit:        { description: 'screencast | fill | native', required: false, default: 'screencast' }
       move:       { description: 'camera move', required: false, default: 'dolly_in' }
       grade:      { description: 'colour grade', required: false, default: 'clean' }
-      style:      { description: 'visual style preset', required: false, default: 'none' }
   repository_dispatch:
     types: [render_video]
 
@@ -67,11 +66,11 @@ jobs:
           emit tts        "$(jq -r '.tts        // "true"'      <<< "$P")"
           emit row_id     "$(jq -r '.row_id     // ""'          <<< "$P")"
           emit callback   "$(jq -r '.callback   // ""'          <<< "$P")"
-          emit fit        "$(jq -r '.fit        // "screencast"'<<< "$P")"
-          emit focus      "$(jq -r '.focus      // "0.5,0.5"'   <<< "$P")"
-          emit move       "$(jq -r '.move       // "dolly_in"'  <<< "$P")"
-          emit grade      "$(jq -r '.grade      // "clean"'     <<< "$P")"
-          emit style      "$(jq -r '.style      // "none"'      <<< "$P")"
+          emit fit        "$(jq -r '.render.fit        // "screencast"' <<< "$P")"
+          emit focus      "$(jq -r '.render.focus      // "0.5,0.5"'   <<< "$P")"
+          emit move       "$(jq -r '.render.move       // "dolly_in"'  <<< "$P")"
+          emit grade      "$(jq -r '.render.grade      // "clean"'     <<< "$P")"
+          emit style      "$(jq -r '.render.style      // "none"'      <<< "$P")"
 
       - name: Install toolchain
         run: |
