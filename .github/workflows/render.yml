@@ -101,7 +101,7 @@ jobs:
             TITLE="${REST%%:*}"; DATA="${REST#*:}"
             echo "generating $TPL from data (no footage)"
             python3 bin/datavid.py --template "$TPL" --data "$DATA" \
-              --title "$TITLE" --brand "$BRAND" --seconds 7 --out raw_input
+              --title "$TITLE" --brand "$BRAND" --seconds 7 --out raw_input.mp4
           else
             curl -fsSL -o raw_input "$SRC"
           fi
@@ -119,7 +119,7 @@ jobs:
           if [[ "${{ steps.cfg.outputs.source_url }}" == datavid:* ]]; then
             FIT="native"
           fi
-          ARGS=(--input raw_input
+          ARGS=(--input raw_input.mp4
                 --out "${{ steps.cfg.outputs.out_name }}"
                 --brand "${{ steps.cfg.outputs.brand }}"
                 --fit "$FIT"
