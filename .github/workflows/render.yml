@@ -108,15 +108,17 @@ jobs:
 
       - name: Render
         env:
+          env:
           HOOK: ${{ steps.cfg.outputs.hook }}
           SCRIPT: ${{ steps.cfg.outputs.script }}
           STATS: ${{ steps.cfg.outputs.stats }}
           TTS: ${{ steps.cfg.outputs.tts }}
+          SOURCE_URL: ${{ steps.cfg.outputs.source_url }}
         run: |
           set -euo pipefail
           FIT="${{ steps.cfg.outputs.fit }}"
           # datavid renders native 9:16 — punching in would crop the design
-          if [[ "${{ steps.cfg.outputs.source_url }}" == datavid:* ]]; then
+          if [ "${{ steps.cfg.outputs.source_url }}" != "" ] && [[ "$SOURCE_URL" == datavid:* ]]; then
             FIT="native"
           fi
           ARGS=(--input raw_input.mp4
