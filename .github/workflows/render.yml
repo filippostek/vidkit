@@ -1,0 +1,146 @@
+name: vidkit render
+
+on:
+  repository_dispatch:
+    types: [render_video]
+  workflow_dispatch:
+    inputs:
+      source_url: { description: 'Video URL or scene:...', required: true }
+      brand:      { description: 'nexalead | armonia', required: false, default: 'nexalead' }
+      hook:       { description: 'Hook', required: false }
+      script:     { description: 'Script', required: false }
+      stats:      { description: 'a|b|c', required: false }
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve inputs
+        id: cfg
+        env:
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          EVENT: ${{ github.event_name }}
+          IN_SOURCE: ${{ inputs.source_url }}
+          IN_BRAND: ${{ inputs.brand }}
+          IN_HOOK: ${{ inputs.hook }}
+          IN_SCRIPT: ${{ inputs.script }}
+          IN_STATS: ${{ inputs.stats }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "repository_dispatch" ]; then P="$PAYLOAD"; else
+            P=$(jq -n --arg source_url "$IN_SOURCE" --arg brand "$IN_BRAND" \
+                --arg hook "$IN_HOOK" --arg script "$IN_SCRIPT" --arg stats "$IN_STATS" '$ARGS.named')
+          fi
+          emit () { local d; d="EOF_$(openssl rand -hex 8)"; printf '%s<<%s\n%s\n%s\n' "$1" "$d" "$2" "$d" >> "$GITHUB_OUTPUT"; }
+          g () { jq -r "$1" <<< "$P"; }
+          emit source_url "$(g '.source_url // ""')"
+          emit brand      "$(g '.brand // "nexalead"')"
+          emit hook       "$(g '.hook // ""')"
+          emit script     "$(g '.script // ""')"
+          emit stats      "$(g '.stats // ""')"
+          emit row_id     "$(g '.row_id // ""')"
+          emit out_name   "$(g '(.opts.out_name // .out_name) // "short.mp4"')"
+          emit tts        "$(g '(.opts.tts // .tts) // "true"')"
+          emit fit        "$(g '(.opts.fit // .fit) // "screencast"')"
+          emit focus      "$(g '(.opts.focus // .focus) // "0.5,0.5"')"
+          emit move       "$(g '(.opts.move // .move) // "dolly_in"')"
+          emit grade      "$(g '(.opts.grade // .grade) // "clean"')"
+          emit style      "$(g '(.opts.style // .style) // "none"')"
+          emit callback   "$(g '(.opts.callback // .callback) // ""')"
+
+      - name: Install toolchain
+        env: { TTS: "${{ steps.cfg.outputs.tts }}" }
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fontconfig libass9
+          mkdir -p ~/.fonts
+          for w in Regular Medium SemiBold Bold; do
+            curl -fsSL -o ~/.fonts/Poppins-$w.ttf "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf" || true
+          done
+          fc-cache -f
+          pip install --quiet pillow auto-editor faster-whisper
+          [ "$TTS" = "true" ] && pip install --quiet kokoro soundfile || echo "tts skipped"
+
+      - name: Get or generate source
+        env:
+          SRC: ${{ steps.cfg.outputs.source_url }}
+          BRAND: ${{ steps.cfg.outputs.brand }}
+        run: |
+          set -euo pipefail
+          if [[ "$SRC" == scene:* ]]; then
+            SPEC="${SRC#scene:}"; TYPE="${SPEC%%|*}"
+            ARGS=(--scene "$TYPE" --brand "$BRAND" --out raw_input.mp4 --seconds 12)
+            IFS='|' read -ra KV <<< "$SPEC"
+            for kv in "${KV[@]:1}"; do
+              k="${kv%%=*}"; v="${kv#*=}"
+              case "$k" in title|value|sub|items|seconds) ARGS+=("--$k" "$v");; esac
+            done
+            python3 bin/autoscene.py "${ARGS[@]}"
+          else
+            curl -fsSL -o raw_input.mp4 "$SRC"
+          fi
+
+      - name: Render
+        env:
+          HOOK: ${{ steps.cfg.outputs.hook }}
+          SCRIPT: ${{ steps.cfg.outputs.script }}
+          STATS: ${{ steps.cfg.outputs.stats }}
+          TTS: ${{ steps.cfg.outputs.tts }}
+          SRC: ${{ steps.cfg.outputs.source_url }}
+          OUT: ${{ steps.cfg.outputs.out_name }}
+          BRAND: ${{ steps.cfg.outputs.brand }}
+          FIT: ${{ steps.cfg.outputs.fit }}
+          FOCUS: ${{ steps.cfg.outputs.focus }}
+          MOVE: ${{ steps.cfg.outputs.move }}
+          GRADE: ${{ steps.cfg.outputs.grade }}
+          STYLE: ${{ steps.cfg.outputs.style }}
+        run: |
+          set -euo pipefail
+          [[ "$SRC" == scene:* ]] && FIT="native"
+          ARGS=(--input raw_input.mp4 --out "$OUT" --brand "$BRAND" --fit "$FIT" --focus "$FOCUS"
+                --move "$MOVE" --grade "$GRADE" --style "$STYLE" --bloom 0.25 --preset veryfast --crf 23)
+          [[ "$SRC" == scene:* ]] && ARGS+=(--no-zoom) || ARGS+=(--autoedit)
+          [ -n "$HOOK" ]   && ARGS+=(--hook "$HOOK")
+          [ -n "$SCRIPT" ] && ARGS+=(--script "$SCRIPT")
+          [ -n "$STATS" ]  && ARGS+=(--stats "$STATS")
+          [ "$TTS" != "true" ] && ARGS+=(--no-tts)
+          python3 bin/render.py "${ARGS[@]}"
+
+      - name: Upload to Cloudflare R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          OUT: ${{ steps.cfg.outputs.out_name }}
+        run: |
+          [ -z "${R2_ACCESS_KEY_ID:-}" ] && { echo "no R2 secrets"; exit 0; }
+          pip install --quiet boto3
+          python3 bin/upload_r2.py --file "$OUT" --also "${OUT%.mp4}.jpg"
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video
+          path: |
+            ${{ steps.cfg.outputs.out_name }}
+            *.jpg
+          retention-days: 14
+
+      - name: Notify n8n
+        env:
+          CB: ${{ steps.cfg.outputs.callback }}
+          ROW: ${{ steps.cfg.outputs.row_id }}
+          PUB: ${{ secrets.R2_PUBLIC_BASE }}
+          OUT: ${{ steps.cfg.outputs.out_name }}
+        run: |
+          [ -z "${CB:-}" ] && { echo "no callback"; exit 0; }
+          PREFIX="videos/$(date -u +%Y-%m)"
+          jq -n --arg row_id "$ROW" --arg video_url "$PUB/$PREFIX/$OUT" \
+                --arg thumbnail_url "$PUB/$PREFIX/${OUT%.mp4}.jpg" \
+                '{row_id:$row_id,status:"scheduled",video_url:$video_url,thumbnail_url:$thumbnail_url}' \
+            | curl -fsS -X POST "$CB" -H 'Content-Type: application/json' -d @- || true

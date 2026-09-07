@@ -1,0 +1,239 @@
+{
+  "name": "Nexalead Performance Loop (weekly)",
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "⏰ Saturday 09:00 CT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 6"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read",
+      "name": "📋 Read Posted Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "MasterCalendar"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "posted"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "fetch_masto",
+      "name": "📊 Mastodon Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "url": "=https://{{ $env.MASTODON_INSTANCE || 'mastodon.social' }}/api/v1/accounts/{{ $env.MASTODON_ACCOUNT_ID }}/statuses?limit=40",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MASTODON_CRED_ID",
+          "name": "Mastodon Bearer"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fetch_bsky",
+      "name": "📊 Bluesky Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        500
+      ],
+      "parameters": {
+        "url": "=https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor={{ $env.BLUESKY_HANDLE }}&limit=40"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "score",
+      "name": "🧮 Score & Rank",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Merge public engagement into one scoreboard keyed by hook.\nconst rows=$('📋 Read Posted Rows').all().map(i=>i.json);\n\nlet masto=[],bsky=[];\ntry{ const m=$('📊 Mastodon Stats').first().json; masto=Array.isArray(m)?m:(m.body||[]); }catch(e){}\ntry{ const b=$('📊 Bluesky Stats').first().json; bsky=(b.feed||[]).map(x=>x.post); }catch(e){}\n\nconst norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').slice(0,60);\n\nconst engagement={};\nfor(const s of masto){\n  const txt=norm((s.content||'').replace(/<[^>]+>/g,''));\n  const e=(s.favourites_count||0)+(s.reblogs_count||0)*2+(s.replies_count||0)*3;\n  if(txt) engagement[txt]=(engagement[txt]||0)+e;\n}\nfor(const s of bsky){\n  const txt=norm(s.record&&s.record.text);\n  const e=(s.likeCount||0)+(s.repostCount||0)*2+(s.replyCount||0)*3;\n  if(txt) engagement[txt]=(engagement[txt]||0)+e;\n}\n\nconst out=[];\nfor(const r of rows){\n  const key=norm(r.copy_bluesky||r.copy_mastodon||r.content_brief);\n  let best=0;\n  for(const k in engagement){\n    if(!k||!key) continue;\n    if(k.slice(0,40)===key.slice(0,40)) best=Math.max(best,engagement[k]);\n  }\n  out.push({json:{\n    row_id:r.row_id||'',\n    date:(r.scheduled_datetime||'').slice(0,10),\n    campaign_type:r.campaign_type||'',\n    hook:r.hook||'',\n    brief:(r.content_brief||'').slice(0,140),\n    platforms:r.platforms||'',\n    engagement:best,\n    measured_at:new Date().toISOString(),\n  }});\n}\nout.sort((a,b)=>b.json.engagement-a.json.engagement);\nreturn out;"
+      }
+    },
+    {
+      "id": "write",
+      "name": "✅ Write Performance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        940,
+        400
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "Performance"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "digest",
+      "name": "📣 Weekly Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1180,
+        400
+      ],
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_ADMIN_CHAT || $env.TELEGRAM_CHANNEL_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=<b>This week</b>\\n{{ $items().length }} posts measured.\\nTop hook: <i>{{ $items()[0].json.hook || 'n/a' }}</i> ({{ $items()[0].json.engagement }})\\nNext week's planner will lean into what worked."
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "⏰ Saturday 09:00 CT": {
+      "main": [
+        [
+          {
+            "node": "📋 Read Posted Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Read Posted Rows": {
+      "main": [
+        [
+          {
+            "node": "📊 Mastodon Stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📊 Bluesky Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Bluesky Stats": {
+      "main": [
+        [
+          {
+            "node": "🧮 Score & Rank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧮 Score & Rank": {
+      "main": [
+        [
+          {
+            "node": "✅ Write Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Write Performance": {
+      "main": [
+        [
+          {
+            "node": "📣 Weekly Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  }
+}

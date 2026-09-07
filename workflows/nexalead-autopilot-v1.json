@@ -1,0 +1,1190 @@
+{
+  "name": "Nexalead AI Autopilot v1 — 15 Channels",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,12,15,18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "⏰ 8AM 12PM 3PM 6PM CT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "value": "=1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "MasterCalendar"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "scheduled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "read_sheet",
+      "name": "📋 Read MasterCalendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "filter_due",
+              "leftValue": "={{ $json.scheduled_datetime }}",
+              "rightValue": "={{ $now.toISO() }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "beforeOrEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "filter_due",
+      "name": "🕐 Filter Due Posts",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are the content engine for Nexalead (nexalead.ai). OFFER: Fractional Chief AI Officer for $10M-$200M revenue companies that need AI leadership without hiring a full-time executive. We bring a backend team, AI workflow design, systems consulting, and \\u2014 critically \\u2014 execution, not just strategy. CONCRETE PROMISES: board-ready AI roadmap in 14 days. Three production AI systems live in 45 days. The client owns everything we build \\u2014 code, systems, documentation. No vendor lock-in, no rented seats. PROOF: currently working with Forbes-list retailers, mid-market manufacturers, distributors and brokers across the US and LATAM. ECONOMICS: we are both a money-maker and a money-saver \\u2014 new revenue from AI systems, plus cost removed from manual operations. AUDIENCE: CEO, COO, CFO or board member at a $10M-$200M company. Non-technical. Under pressure to 'do something about AI'. Has been pitched by consultancies that deliver slide decks and disappear. VOICE: direct, concrete numbers, zero jargon, zero hype, slightly contrarian. Never say 'leverage', 'unlock', 'transform', 'journey', 'landscape', 'game-changer', or 'in today's fast-paced world'. Write like an operator talking to another operator. Respond with ONLY a JSON object.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Generate content for: {{ $json.content_brief }}\\n\\nCampaign: {{ $json.campaign_type }}\\nPlatforms: {{ $json.platforms }}\\n\\nReturn JSON with ALL these keys (empty string for unused platforms):\\n\\n- copy_facebook: conversational English for SMB owner audience, 2-3 paragraphs, plain talk\\n- copy_threads: max 500 chars, conversational take\\n- copy_bluesky: max 300 chars\\n- copy_truthsocial: max 500 chars, business/economy angle\\n- copy_mastodon: max 500 chars, include nexalead.ai link\\n- copy_telegram: up to 4096 chars, HTML formatting (<b>, <i>, <a href>), actionable AI tip format\\n- copy_tumblr: creative long-form take\\n- copy_reddit_title: genuinely useful, NOT salesy, no company name in title\\n- copy_reddit: 200-300 word value-first answer sharing a real tactic with numbers; one soft mention of nexalead.ai at the very end only\\n- copy_blogger_title: SEO headline English\\n- copy_blogger: 1000-1500 word HTML article with H2 subheadings, 2+ links to nexalead.ai\\n- blog_labels: comma separated tags\\n- copy_medium_title: compelling headline\\n- copy_medium: 800-1200 word markdown article, case-study style with numbers, 2+ links to nexalead.ai\\n- copy_substack_title: newsletter subject line\\n- copy_substack_body: 600-800 word newsletter in markdown, one actionable AI automation idea per issue\\n- copy_devto_title: technical-curious headline\\n- copy_devto: 800-1200 word markdown article, practical automation walkthrough angle, links to nexalead.ai\\n- devto_tags: 4 comma-separated tags like ai,automation,business,productivity\\n- copy_hashnode_title: SEO headline\\n- copy_hashnode: 800-1200 word markdown, DIFFERENT angle than devto and medium\\n\\nCRITICAL: Each blog (blogger, medium, substack, devto, hashnode) MUST have a DIFFERENT angle on the topic. Never duplicate content across platforms.\"\n    }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "chatgpt",
+      "name": "🧠 ChatGPT Generate All",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CRED_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $input.item.json;\nlet ai = {};\ntry {\n  const content = raw.choices?.[0]?.message?.content || '{}';\n  ai = JSON.parse(content);\n} catch(e) {\n  ai = { error: 'Failed to parse AI response: ' + e.message };\n}\n\n// Get original row data from earlier node\nconst orig = $('🕐 Filter Due Posts').first().json;\n\nreturn { json: { ...orig, ...ai, _platforms: (orig.platforms || '').split(',').map(s => s.trim().toLowerCase()) } };"
+      },
+      "id": "merge_ai",
+      "name": "🔗 Merge AI + Row Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('threads') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_threads",
+      "name": "→ Threads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('bluesky') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_bluesky",
+      "name": "→ Bluesky?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://bsky.social/xrpc/com.atproto.repo.createRecord",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"repo\": \"BLUESKY_DID_NEEDED\",\n  \"collection\": \"app.bsky.feed.post\",\n  \"record\": {\n    \"text\": \"{{ $json.copy_bluesky }}\",\n    \"createdAt\": \"{{ $now.toISO() }}\",\n    \"$type\": \"app.bsky.feed.post\"\n  }\n}"
+      },
+      "id": "post_bluesky",
+      "name": "📤 Bluesky",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        40
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BLUESKY_CRED_ID",
+          "name": "Bluesky Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('facebook') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_facebook",
+      "name": "→ Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('blogger') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_blogger",
+      "name": "→ Blogger?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/blogger/v3/blogs/BLOGGER_ID_NEEDED/posts/",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"kind\": \"blogger#post\",\n  \"title\": \"{{ $json.copy_blogger_title }}\",\n  \"content\": \"{{ $json.copy_blogger }}\",\n  \"labels\": {{ JSON.stringify(($json.blog_labels || '').split(',').map(s => s.trim())) }}\n}"
+      },
+      "id": "post_blogger",
+      "name": "📤 Blogger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('medium') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_medium",
+      "name": "→ Medium?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.medium.com/v1/users/MEDIUM_USER_ID_NEEDED/posts",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.copy_medium_title }}\",\n  \"contentFormat\": \"markdown\",\n  \"content\": {{ JSON.stringify($json.copy_medium || '') }},\n  \"publishStatus\": \"public\",\n  \"canonicalUrl\": \"{{ $json.link_url || 'https://armoniaairbnb.com/blog' }}\"\n}"
+      },
+      "id": "post_medium",
+      "name": "📤 Medium",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        520
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MEDIUM_CRED_ID",
+          "name": "Medium Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('tumblr') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if_tumblr",
+      "name": "→ Tumblr?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.tumblr.com/v2/blog/armoniacdmx/post",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.copy_blogger_title }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.copy_tumblr }}"
+            }
+          ]
+        }
+      },
+      "id": "post_tumblr",
+      "name": "📤 Tumblr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        1120
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "TUMBLR_CRED_ID",
+          "name": "Tumblr OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "value": "=1oOB_LyYbDtw2REj67agYEHjDVJkW26hMClyao1ap3CY"
+        },
+        "sheetName": {
+          "value": "MasterCalendar"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "posted",
+            "posted_at": "={{ $now.toISO() }}",
+            "results_log": "Posted to {{ $json.platforms }}",
+            "copy_substack_title": "={{ $json.copy_substack_title || '' }}",
+            "copy_substack_body": "={{ $json.copy_substack_body || '' }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "update_sheet",
+      "name": "✅ Mark Posted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1600,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CRED_ID",
+          "name": "Google OAuth2"
+        }
+      }
+    },
+    {
+      "id": "utm_enforce",
+      "name": "🔗 UTM Enforce",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        990,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Enforce UTM params on nexalead.ai links in every copy field\nconst d = { ...$input.item.json };\nconst utmMap = {\n  twitter: 'twitter', facebook: 'facebook',\n  threads: 'threads', bluesky: 'bluesky',\n  truthsocial: 'truthsocial', mastodon: 'mastodon',\n  telegram: 'telegram', tumblr: 'tumblr', reddit: 'reddit',\n  blogger: 'blogger', medium: 'medium', substack: 'substack',\n  devto: 'devto', hashnode: 'hashnode',\n};\nfunction addUtm(text, source, medium) {\n  if (!text) return text;\n  return text.replace(\n    /https?:\\/\\/nexalead\\.ai(\\/[^?\\s\"')]*)?(?!\\S*utm_source)/g,\n    (m, path) => {\n      const p = path || '';\n      const sep = p.includes('?') ? '&' : '?';\n      return 'https://nexalead.ai' + p + sep + 'utm_source=' + source + '&utm_medium=' + medium + '&utm_campaign=autopilot';\n    }\n  );\n}\nconst copyFields = Object.keys(d).filter(k => k.startsWith('copy_') || k === 'link_url');\nfor (const field of copyFields) {\n  if (!d[field]) continue;\n  let src = 'direct', med = 'social';\n  for (const [plat, s] of Object.entries(utmMap)) {\n    if (field.toLowerCase().includes(plat)) {\n      src = s;\n      if (['blogger','medium','substack','devto','hashnode'].includes(plat)) med = 'blog';\n      break;\n    }\n  }\n  d[field] = addUtm(d[field], src, med);\n}\nreturn { json: d };"
+      }
+    },
+    {
+      "id": "if_truthsocial",
+      "name": "→ Truth Social?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1840
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('truthsocial') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_truthsocial",
+      "name": "📤 Truth Social",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        1840
+      ],
+      "parameters": {
+        "url": "https://truthsocial.com/api/v1/statuses",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $json.copy_truthsocial }}"
+            },
+            {
+              "name": "visibility",
+              "value": "public"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TRUTH_CRED_ID",
+          "name": "Truth Social Bearer"
+        }
+      }
+    },
+    {
+      "id": "if_mastodon",
+      "name": "→ Mastodon?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1960
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('mastodon') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_mastodon",
+      "name": "📤 Mastodon",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        1960
+      ],
+      "parameters": {
+        "url": "=https://{{ $env.MASTODON_INSTANCE || 'mastodon.social' }}/api/v1/statuses",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $json.copy_mastodon || $json.copy_bluesky }}"
+            },
+            {
+              "name": "visibility",
+              "value": "public"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MASTODON_CRED_ID",
+          "name": "Mastodon Bearer"
+        }
+      }
+    },
+    {
+      "id": "if_telegram",
+      "name": "→ Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        2080
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('telegram') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_telegram",
+      "name": "📤 Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        2080
+      ],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHANNEL_ID }}",
+        "text": "={{ $json.copy_telegram || $json.copy_threads }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "id": "if_reddit",
+      "name": "→ Reddit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        760
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('reddit') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_reddit",
+      "name": "📤 Reddit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        760
+      ],
+      "parameters": {
+        "url": "https://oauth.reddit.com/api/submit",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "sr",
+              "value": "={{ $json.reddit_subreddit || 'SaaS' }}"
+            },
+            {
+              "name": "kind",
+              "value": "self"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.copy_reddit_title }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.copy_reddit }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "REDDIT_CRED_ID",
+          "name": "Reddit OAuth2"
+        }
+      }
+    },
+    {
+      "id": "if_devto",
+      "name": "→ dev.to?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        880
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('devto') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_devto",
+      "name": "📤 dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        880
+      ],
+      "parameters": {
+        "url": "https://dev.to/api/articles",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"article\": {\n    \"title\": \"{{ $json.copy_devto_title }}\",\n    \"body_markdown\": {{ JSON.stringify($json.copy_devto || '') }},\n    \"published\": true,\n    \"tags\": {{ JSON.stringify(($json.devto_tags || 'ai,automation,business,productivity').split(',').map(s => s.trim()).slice(0,4)) }},\n    \"canonical_url\": \"{{ $json.link_url || 'https://nexalead.ai/blog' }}\"\n  }\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DEVTO_CRED_ID",
+          "name": "dev.to API Key"
+        }
+      }
+    },
+    {
+      "id": "if_hashnode",
+      "name": "→ Hashnode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1000
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._platforms.includes('hashnode') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post_hashnode",
+      "name": "📤 Hashnode",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        1000
+      ],
+      "parameters": {
+        "url": "https://gql.hashnode.com",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"mutation PublishPost($input: PublishPostInput!) { publishPost(input: $input) { post { url } } }\",\n  \"variables\": {\n    \"input\": {\n      \"title\": \"{{ $json.copy_hashnode_title }}\",\n      \"contentMarkdown\": {{ JSON.stringify($json.copy_hashnode || '') }},\n      \"publicationId\": \"{{ $env.HASHNODE_PUBLICATION_ID }}\",\n      \"tags\": []\n    }\n  }\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HASHNODE_CRED_ID",
+          "name": "Hashnode Token"
+        }
+      }
+    },
+    {
+      "id": "post_facebook",
+      "name": "📤 Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        160
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $env.FB_PAGE_ID }}/feed",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $json.copy_facebook }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "META_CRED_ID",
+          "name": "Meta Bearer"
+        }
+      }
+    },
+    {
+      "id": "threads_create",
+      "name": "📤 Threads Create",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        -80
+      ],
+      "parameters": {
+        "url": "=https://graph.threads.net/v1.0/{{ $env.THREADS_USER_ID }}/threads",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "TEXT"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.copy_threads }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "THREADS_CRED_ID",
+          "name": "Threads Bearer"
+        }
+      }
+    },
+    {
+      "id": "threads_publish",
+      "name": "📤 Threads Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        -80
+      ],
+      "parameters": {
+        "url": "=https://graph.threads.net/v1.0/{{ $env.THREADS_USER_ID }}/threads_publish",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "THREADS_CRED_ID",
+          "name": "Threads Bearer"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "📋 Read MasterCalendar": {
+      "main": [
+        [
+          {
+            "node": "🕐 Filter Due Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🕐 Filter Due Posts": {
+      "main": [
+        [
+          {
+            "node": "🧠 ChatGPT Generate All",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 ChatGPT Generate All": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge AI + Row Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Merge AI + Row Data": {
+      "main": [
+        [
+          {
+            "node": "🔗 UTM Enforce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ Threads?": {
+      "main": [
+        [
+          {
+            "node": "📤 Threads Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Bluesky?": {
+      "main": [
+        [
+          {
+            "node": "📤 Bluesky",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Facebook?": {
+      "main": [
+        [
+          {
+            "node": "📤 Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Blogger?": {
+      "main": [
+        [
+          {
+            "node": "📤 Blogger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Medium?": {
+      "main": [
+        [
+          {
+            "node": "📤 Medium",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Tumblr?": {
+      "main": [
+        [
+          {
+            "node": "📤 Tumblr",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "🔗 UTM Enforce": {
+      "main": [
+        [
+          {
+            "node": "→ Threads?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Bluesky?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Facebook?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Blogger?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Medium?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Tumblr?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Truth Social?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Mastodon?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Telegram?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Reddit?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ dev.to?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "→ Hashnode?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "✅ Mark Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ Truth Social?": {
+      "main": [
+        [
+          {
+            "node": "📤 Truth Social",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Mastodon?": {
+      "main": [
+        [
+          {
+            "node": "📤 Mastodon",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Telegram?": {
+      "main": [
+        [
+          {
+            "node": "📤 Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Reddit?": {
+      "main": [
+        [
+          {
+            "node": "📤 Reddit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ dev.to?": {
+      "main": [
+        [
+          {
+            "node": "📤 dev.to",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "→ Hashnode?": {
+      "main": [
+        [
+          {
+            "node": "📤 Hashnode",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "⏰ 8AM 12PM 3PM 6PM CT": {
+      "main": [
+        [
+          {
+            "node": "📋 Read MasterCalendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Threads Create": {
+      "main": [
+        [
+          {
+            "node": "📤 Threads Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  }
+}
