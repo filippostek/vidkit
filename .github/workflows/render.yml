@@ -71,14 +71,9 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$SRC" == scene:* ]]; then
-            SPEC="${SRC#scene:}"; TYPE="${SPEC%%|*}"
-            ARGS=(--scene "$TYPE" --brand "$BRAND" --out raw_input.mp4 --seconds 12)
-            IFS='|' read -ra KV <<< "$SPEC"
-            for kv in "${KV[@]:1}"; do
-              k="${kv%%=*}"; v="${kv#*=}"
-              case "$k" in title|value|sub|items|seconds) ARGS+=("--$k" "$v");; esac
-            done
-            python3 bin/autoscene.py "${ARGS[@]}"
+            python3 bin/autoscene.py --spec "${SRC#scene:}" --hook "$HOOKV" \
+              --brand "$BRAND" --out raw_input.mp4 ${SECS:+--seconds "$SECS"} \
+              --variant "$(( $(echo -n "$ROWV" | cksum | cut -d" " -f1) % 3 ))"
           else
             curl -fsSL -o raw_input.mp4 "$SRC"
           fi
