@@ -62,7 +62,8 @@ jobs:
             curl -fsSL -o ~/.fonts/Poppins-$w.ttf "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf" || true
           done
           fc-cache -f
-          pip install --quiet pillow auto-editor faster-whisper
+          pip install --quiet pillow auto-editor faster-whisper playwright
+          python3 -m playwright install --with-deps chromium
           [ "$TTS" = "true" ] && pip install --quiet kokoro soundfile || echo "tts skipped"
 
       - name: Get or generate source
@@ -75,9 +76,15 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$SRC" == scene:* ]]; then
-            python3 bin/autoscene.py --spec "${SRC#scene:}" --hook "$HOOKV" \
-              --brand "$BRAND" --out raw_input.mp4 ${SECS:+--seconds "$SECS"} \
-              --variant "$(( $(echo -n "$ROWV" | cksum | cut -d" " -f1) % 3 ))"
+            V="$(( $(echo -n "$ROWV" | cksum | cut -d" " -f1) % 3 ))"
+            if python3 bin/scenegl.py --spec "${SRC#scene:}" --hook "$HOOKV" \
+                 --brand "$BRAND" --out raw_input.mp4 ${SECS:+--seconds "$SECS"} --variant "$V"; then
+              echo "browser renderer OK"
+            else
+              echo "scenegl failed, falling back to autoscene"
+              python3 bin/autoscene.py --spec "${SRC#scene:}" --hook "$HOOKV" \
+                --brand "$BRAND" --out raw_input.mp4 ${SECS:+--seconds "$SECS"} --variant "$V"
+            fi
           else
             curl -fsSL -o raw_input.mp4 "$SRC"
           fi
@@ -98,13 +105,21 @@ jobs:
           STYLE: ${{ steps.cfg.outputs.style }}
         run: |
           set -euo pipefail
-          [[ "$SRC" == scene:* ]] && FIT="native"
+          SCENE=0; [[ "$SRC" == scene:* ]] && SCENE=1
+          [ "$SCENE" = 1 ] && FIT="native"
           ARGS=(--input raw_input.mp4 --out "$OUT" --brand "$BRAND" --fit "$FIT" --focus "$FOCUS"
-                --move "$MOVE" --grade "$GRADE" --style "$STYLE" --bloom 0.25 --preset veryfast --crf 23)
-          [[ "$SRC" == scene:* ]] && ARGS+=(--no-zoom) || ARGS+=(--autoedit)
-          [ -n "$HOOK" ]   && ARGS+=(--hook "$HOOK")
+                --move "$MOVE" --grade "$GRADE" --style "$STYLE" --preset veryfast --crf 23)
+          if [ "$SCENE" = 1 ]; then
+            # autoscene already drew the hook beat, stat beats and brand tag.
+            # render.py must ONLY add voiceover + karaoke captions here,
+            # otherwise cards double up over dead space.
+            ARGS+=(--no-zoom --no-cards)
+          else
+            ARGS+=(--autoedit --bloom 0.25)
+            [ -n "$HOOK" ]  && ARGS+=(--hook "$HOOK")
+            [ -n "$STATS" ] && ARGS+=(--stats "$STATS")
+          fi
           [ -n "$SCRIPT" ] && ARGS+=(--script "$SCRIPT")
-          [ -n "$STATS" ]  && ARGS+=(--stats "$STATS")
           [ "$TTS" != "true" ] && ARGS+=(--no-tts)
           python3 bin/render.py "${ARGS[@]}"
 

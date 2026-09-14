@@ -541,6 +541,8 @@ def make_thumbnail(video, out, at=1.2):
 # orchestrator
 # ----------------------------------------------------------------------------
 def build(args):
+    if getattr(args,'no_cards',False):
+        args.hook=''; args.stats=''; args.tag=''
     brand = BRANDS[args.brand]
     src = Path(args.input).resolve()
     if not src.exists():
@@ -773,6 +775,8 @@ def main():
     ap.add_argument("--no-tts", action="store_true")
     ap.add_argument("--no-asr", action="store_true")
     ap.add_argument("--no-zoom", action="store_true")
+    ap.add_argument("--no-cards", action="store_true",
+                    help="skip hook/stat/brand overlays (source already has them)")
     ap.add_argument("--keep-temp", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
