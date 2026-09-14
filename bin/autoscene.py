@@ -106,7 +106,9 @@ def beat_hook(b, dur, text="", **_):
             else: d.rounded_rectangle([(W-uw)/2,yb,(W+uw)/2,yb+14],7,fill=b["a"])
         yield img
 
-def beat_counter(b, dur, title="", value="0", sub="", **_):
+def beat_counter(b, dur, title="", value="0", sub="", _var=None, **_):
+    global VAR
+    if _var is not None: VAR=_var
     try: val=float(str(value).replace(",","").replace("$",""))
     except Exception: val=0.0
     n=int(dur*FPS)
@@ -143,7 +145,9 @@ def beat_counter(b, dur, title="", value="0", sub="", **_):
                    fill=tuple(int(b["bg"][j]+(b["mu"][j]-b["bg"][j])*a) for j in range(3)))
         yield img
 
-def beat_grid(b, dur, title="", items=None, **_):
+def beat_grid(b, dur, title="", items=None, _var=None, **_):
+    global VAR
+    if _var is not None: VAR=_var
     items=(items or ["—"])[:10]; n=int(dur*FPS)
     cols = 1 if VAR==1 else 2
     bw,bh,gx,gy = (900,96,0,16) if VAR==1 else (468,106,40,(16 if VAR==2 else 20))
@@ -173,7 +177,9 @@ def beat_grid(b, dur, title="", items=None, **_):
         d.text(((W-cw)/2,H-290),ct,font=cf,fill=b["a"])
         yield img
 
-def beat_versus(b, dur, title="", items=None, **_):
+def beat_versus(b, dur, title="", items=None, _var=None, **_):
+    global VAR
+    if _var is not None: VAR=_var
     it=((items or [])+["Before","After"])[:2]; n=int(dur*FPS)
     for i in range(n):
         t=i/FPS; img,d=plate(b,t)
@@ -217,10 +223,10 @@ BEATS={"hook":beat_hook,"counter":beat_counter,"grid":beat_grid,"versus":beat_ve
 
 def transition(a,bimg,k,kind):
     if kind=="whip":
-        off=int(W*(1-abs(1-2*k)))
+        e=ease(k); off=int(W*e)
         c=Image.new("RGB",(W,H),(0,0,0))
-        if k<0.5: c.paste(a,(-off,0))
-        else:     c.paste(bimg,(W-off,0))
+        c.paste(a,(-off,0))
+        c.paste(bimg,(W-off,0))
         return c
     return Image.blend(a,bimg,ease(k))
 
@@ -269,30 +275,49 @@ def build(spec,hook,brand,out,total=None,quiet=False,variant=None):
         plan.append(("grid",{"title":"every platform, one post","items":kw["items"]},3.2))
     plan.append(("close",{"text":close_txt,"sub":b["tag"]},2.6))
     if total:
-        f=float(total)/sum(p[2] for p in plan); plan=[(k,v,d*f) for k,v,d in plan]
+        tot=float(total)
+        base=sum(p[2] for p in plan)
+        # long targets: repeat the data beat with other variants instead of
+        # stretching beats into dead air. Beats stay 2.6-4.5s.
+        rep=0
+        while tot/ (len(plan)) > 4.5 and len(plan) < 7:
+            rep+=1; db=plan[1]
+            kw3=dict(db[1]); kw3["_var"]=(VAR+rep)%3
+            plan.insert(-1,(db[0],kw3,db[2]))
+            base=sum(p[2] for p in plan)
+        f=min(1.45, max(0.75, tot/base))
+        plan=[(k,v,d*f) for k,v,d in plan]
 
     XF=0.30; xf=int(XF*FPS)
-    seqs=[[im.copy() for im in BEATS[k](b,dur,**kw2)] for k,kw2,dur in plan]
+    tmp=Path(tempfile.mkdtemp(prefix="sc_"))
     kinds=["whip","flash","whip","flash"]
-    frames=[]; cues=[(0.0,"impact")]; tsec=0.0
-    for si,seq in enumerate(seqs):
-        last = si==len(seqs)-1
-        keep = seq if last else seq[:max(1,len(seq)-xf)]
-        frames+=keep; tsec+=len(keep)/FPS
+    idx=0; cues=[(0.0,"impact")]; tsec=0.0; carry=None
+    for si,(k,kw2,dur) in enumerate(plan):
+        last = si==len(plan)-1
+        seq=[]                       # only the tail overlap is kept in RAM
+        for fi,im in enumerate(BEATS[k](b,dur,**kw2)):
+            if carry is not None:    # blend into the previous beat's tail
+                j=len(carry)-1 if fi>=len(carry) else fi
+                if fi < len(carry):
+                    kt=kinds[(si-1)%len(kinds)]
+                    im=transition(carry[fi],im,(fi+1)/len(carry),kt)
+                elif fi==len(carry):
+                    carry=None
+            keep_tail = (not last) and fi >= int(dur*FPS)-xf
+            if keep_tail:
+                seq.append(im.copy())
+                continue
+            finish(im,idx,b).save(tmp/f"f{idx:05d}.png"); idx+=1
+        tsec=idx/FPS
         if not last:
-            tail=seq[len(keep):] or [seq[-1]]*xf
-            nxt=seqs[si+1][:xf] or [seqs[si+1][0]]*xf
             kt=kinds[si%len(kinds)]
             cues.append((tsec,"whoosh" if kt=="whip" else "tick"))
             cues.append((tsec+XF*0.55,"impact"))
-            m=min(len(tail),len(nxt),xf)
-            for j in range(m):
-                frames.append(transition(tail[j],nxt[j],(j+1)/m,kt))
-            seqs[si+1]=seqs[si+1][m:] or seqs[si+1]
-            tsec+=m/FPS
-    tmp=Path(tempfile.mkdtemp(prefix="sc_"))
-    for i,im in enumerate(frames): finish(im,i,b).save(tmp/f"f{i:05d}.png")
-    dur=len(frames)/FPS
+            carry=seq or None
+    if carry:
+        for im in carry:
+            finish(im,idx,b).save(tmp/f"f{idx:05d}.png"); idx+=1
+    dur=idx/FPS
     aud=sfx(cues,dur,tmp/"a.wav")
     cmd=["ffmpeg","-y","-hide_banner","-loglevel","error","-framerate",str(FPS),"-i",str(tmp/"f%05d.png")]
     cmd+=["-i",str(aud)] if aud else ["-f","lavfi","-i","anullsrc=r=44100:cl=stereo"]

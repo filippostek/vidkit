@@ -49,6 +49,7 @@ jobs:
           emit move       "$(g '(.opts.move // .move) // "dolly_in"')"
           emit grade      "$(g '(.opts.grade // .grade) // "clean"')"
           emit style      "$(g '(.opts.style // .style) // "none"')"
+          emit seconds    "$(g '(.opts.seconds // .target_seconds) // ""')"
           emit callback   "$(g '(.opts.callback // .callback) // ""')"
 
       - name: Install toolchain
@@ -68,6 +69,9 @@ jobs:
         env:
           SRC: ${{ steps.cfg.outputs.source_url }}
           BRAND: ${{ steps.cfg.outputs.brand }}
+          HOOKV: ${{ steps.cfg.outputs.hook }}
+          ROWV: ${{ steps.cfg.outputs.row_id }}
+          SECS: ${{ steps.cfg.outputs.seconds }}
         run: |
           set -euo pipefail
           if [[ "$SRC" == scene:* ]]; then
